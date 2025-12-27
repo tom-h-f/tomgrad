@@ -1,26 +1,26 @@
 #ifndef TOMGRAD_H
 #define TOMGRAD_H
 
-#include <math.h>
+#include <time.h>
 #include <stddef.h>
 #include <stdlib.h>
 
-typedef long double tg_value_t;
-typedef int tg_err_t;
 
 #define SUCCESS 0
 #define ERR_UNKNOWN 1
 #define ERR_MEMORY_ALLOCATION 2
 
-
 #define UNWRAP(expr) do { \
 		tg_err_t err = (expr); \
 		if (err != SUCCESS) { \
-            fprintf(stderr, "Panic: Error code %d\n", err); \
+            fprintf(stderr, "Panic at %s:%d - Error code %d\n", __FILE__, __LINE__, err); \
             abort(); \
 		} \
 } while (0)
 
+
+typedef float tg_value_t;
+typedef int tg_err_t;
 
 
 typedef struct {
@@ -31,8 +31,9 @@ typedef struct {
 
 
 typedef struct {
-		tg_value_t* vals;
-		size_t size;
+    tg_tensor_shape_t shape;
+    tg_value_t* vals;
+    size_t size;
 } tg_tensor_t;
 
 
@@ -46,26 +47,88 @@ typedef struct {
 #define TENSOR_CREATE(tensor_ptr, ...) \
 		do { \
 				size_t dims[] = {__VA_ARGS__}; \
-				tg_tensor_shape_t* shape = NULL; \
-				UNWRAP(tensor_shape_init(dims, sizeof(dims)/sizeof(dims[0]), &shape)); \
-				UNWRAP(tensor_init(shape, tensor_ptr)); \
-				tensor_shape_free(shape); \
+				UNWRAP(tensor_init(dims, sizeof(dims)/sizeof(dims[0]), tensor_ptr)); \
+		} while (0)
+
+#define TENSOR_DESTROY(tensor) \
+		do { \
+				if (tensor) { \
+						tensor_free(tensor); \
+						tensor = NULL; \
+				} \
+		} while (0)
+
+#define TENSOR_CREATE_ZEROS(tensor_ptr, ...) \
+		TENSOR_CREATE(tensor_ptr, __VA_ARGS__)
+
+#define TENSOR_CREATE_ONES(tensor_ptr, ...) \
+		do { \
+				TENSOR_CREATE(tensor_ptr, __VA_ARGS__); \
+				for (size_t i = 0; i < (*tensor_ptr)->size; i++) { \
+						(*tensor_ptr)->vals[i] = 1.0; \
+				} \
+		} while (0)
+
+#define TENSOR_CREATE_FILLED(tensor_ptr, value, ...) \
+		do { \
+				TENSOR_CREATE(tensor_ptr, __VA_ARGS__); \
+				for (size_t i = 0; i < (*tensor_ptr)->size; i++) { \
+						(*tensor_ptr)->vals[i] = (value); \
+				} \
+		} while (0)
+
+#define TENSOR_CREATE_RANDOM(tensor_ptr, ...) \
+		do { \
+                srand(time(NULL)); \
+				TENSOR_CREATE(tensor_ptr, __VA_ARGS__); \
+				for (size_t i = 0; i < (*tensor_ptr)->size; i++) { \
+						(*tensor_ptr)->vals[i] = (float)rand() - (float)rand(); \
+				} \
+		} while (0)
+
+#define TENSOR_CREATE_RANGE(tensor_ptr, start, step, ...) \
+		do { \
+				TENSOR_CREATE(tensor_ptr, __VA_ARGS__); \
+				tg_value_t current = (start); \
+				for (size_t i = 0; i < (*tensor_ptr)->size; i++) { \
+						(*tensor_ptr)->vals[i] = current; \
+						current += (step); \
+				} \
+		} while (0)
+
+#define TENSOR_FOR_EACH(tensor, var, code) \
+		for (size_t i = 0; i < (tensor)->size; i++) { \
+				tg_value_t var = (tensor)->vals[i]; \
+				code; \
+		}
+
+#define TENSOR_ASSERT_EQUAL(t1, t2) \
+		do { \
+				assert((t1)->size == (t2)->size); \
+				for (size_t i = 0; i < (t1)->size; i++) { \
+						assert((t1)->vals[i] == (t2)->vals[i]); \
+				} \
 		} while (0)
 
 
-tg_err_t tensor_init(tg_tensor_shape_t* shape, tg_tensor_t** ptr);
+#define TENSOR_PRINT(tensor) tensor_print(tensor)
+
+tg_err_t tensor_init(size_t dims[], size_t n_dims, tg_tensor_t** ptr);
+
 tg_err_t tensor_scalar_add(tg_tensor_t* tensor, tg_value_t scalar);
 tg_err_t tensor_scalar_sub(tg_tensor_t* tensor, tg_value_t scalar);
 tg_err_t tensor_scalar_mul(tg_tensor_t* tensor, tg_value_t scalar);
 tg_err_t tensor_scalar_div(tg_tensor_t* tensor, tg_value_t scalar);
 tg_err_t tensor_sqrt(tg_tensor_t* tensor);
+tg_err_t tensor_abs(tg_tensor_t* tensor);
 
-tg_err_t tensor_free(tg_tensor_t* tensor);
 void tensor_print(tg_tensor_t* tensor);
+size_t tensor_total_elements(tg_tensor_t* tensor);
 
-tg_err_t tensor_shape_init(size_t dims[], size_t n_dims, tg_tensor_shape_t** ptr);
 
-size_t tensor_shape_total_elements(tg_tensor_shape_t* shape);
-tg_err_t tensor_shape_free(tg_tensor_shape_t* shape);
+tg_err_t tensor_shape_init(size_t dims[], size_t n_dims, tg_tensor_shape_t* shape);
+
+// Utility functions
+size_t total_elements_for_dimensions(size_t dims[], size_t n_dims);
 
 #endif // TOMGRAD_H
