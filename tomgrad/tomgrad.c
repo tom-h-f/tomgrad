@@ -2,22 +2,23 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
+#include <string.h>
 
 
-tg_err_t tensor_init(int dims[], size_t n_dims, tg_tensor_t** ptr) {
-    assert(dims != NULL);
-    assert(n_dims > 0);
+tg_err_t tensor_init(tg_tensor_shape_t* shape, tg_tensor_t** ptr) {
+    assert(shape != NULL);
+    assert(shape->dimensions != NULL);
+    assert(shape->n_dimensions > 0);
+
     tg_tensor_t* tensor = (tg_tensor_t*)calloc(1, sizeof(tg_tensor_t));
     if (!tensor) {return ERR_MEMORY_ALLOCATION; }
 
-    size_t n_values = 1;
-    tensor->size = n_values;
-    tensor->vals = (tg_value_t*)calloc(n_values, sizeof(tg_value_t));
+    tensor->size = tensor_shape_total_elements(shape);
+    tensor->vals = (tg_value_t*)calloc(tensor->size, sizeof(tg_value_t));
 
-    assert(tensor->size = n_values);
-    for(size_t i = 0; i< n_values; i++) {
+    assert(tensor->size = tensor_shape_total_elements(shape));
+    for(size_t i = 0; i< tensor->size; i++) {
         assert(tensor->vals[i] == 0);
     }
 
@@ -49,10 +50,11 @@ tg_err_t tensor_sqrt(tg_tensor_t* tensor) {
     return SUCCESS;
 }
 
-void tensor_free(tg_tensor_t* tensor) {
+tg_err_t  tensor_free(tg_tensor_t* tensor) {
     assert(tensor != NULL);
     free(tensor->vals);
     free(tensor);
+    return SUCCESS;
 }
 
 
@@ -63,7 +65,45 @@ void tensor_print(tg_tensor_t* tensor) {
     }
 }
 
-void panic(tg_err_t err) {
-    fprintf(stderr, "Panic: Error code %d\n", err);
-    abort();
+
+tg_err_t tensor_shape_init(size_t dims[], size_t n_dims, tg_tensor_shape_t** ptr) {
+    assert(dims != NULL);
+    assert(n_dims > 0);
+
+    tg_tensor_shape_t* shape = (tg_tensor_shape_t*)calloc(1, sizeof(tg_tensor_shape_t));
+    if (!shape) {return ERR_MEMORY_ALLOCATION; }
+
+    shape->n_dimensions = n_dims;
+    shape->dimensions = (size_t*)calloc(n_dims, sizeof(size_t));
+    memcpy((void*)shape->dimensions, \
+           (const void*)dims, \
+           n_dims*sizeof(size_t));
+
+    assert(*dims == *shape->dimensions);
+
+    // TODO: Calculate strides
+
+    *ptr = shape;
+    return SUCCESS;
+}
+
+size_t tensor_shape_total_elements(tg_tensor_shape_t* shape) {
+    assert(shape != NULL);
+    assert(shape->n_dimensions > 0);
+
+    size_t n = 1;
+    for(size_t i = 0; i < shape->n_dimensions; i++) {
+        n *= shape->dimensions[i];
+    }
+    return n;
+}
+
+
+
+
+tg_err_t tensor_shape_free(tg_tensor_shape_t* shape) {
+    free(shape->dimensions);
+    free(shape->strides);
+    free(shape);
+    return SUCCESS;
 }
