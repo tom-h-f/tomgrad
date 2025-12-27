@@ -8,7 +8,8 @@ typedef long double tg_value_t;
 typedef int tg_err_t;
 
 #define SUCCESS 0
-#define ERROR_UNKNOWN 1
+#define ERR_UNKNOWN 1
+#define ERR_MEMORY_ALLOCATION 2
 
 
 #define UNWRAP(expr) do { \
@@ -19,6 +20,12 @@ typedef int tg_err_t;
 } while (0)
 
 
+
+typedef struct {
+    size_t* dimensions;
+    size_t n_dimensions;
+    size_t* strides;
+} tg_shape;
 
 
 typedef struct {
@@ -31,13 +38,6 @@ typedef struct {
 		do { \
 				for (size_t i = 0; i < (tensor)->size; i++) { \
 						(tensor)->vals[i] = (tensor)->vals[i] op (scalar); \
-				} \
-		} while (0)
-
-#define TENSOR_MAP(tensor, expr) \
-		do { \
-				for (size_t i = 0; i < (tensor)->size; i++) { \
-						(tensor)->vals[i] = (expr); \
 				} \
 		} while (0)
 
