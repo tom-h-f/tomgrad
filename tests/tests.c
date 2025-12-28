@@ -9,17 +9,17 @@ void test_tensor_init_creates_tensor(void) {
     tg_tensor_t* tensor = (tg_tensor_t*)NULL;
     TENSOR_CREATE(&tensor, 3);
     TEST_ASSERT_NOT_NULL(tensor);
-    TEST_ASSERT_EQUAL(3, tensor->size);
+    TEST_ASSERT_EQUAL(3, tensor->n_elements);
     TEST_ASSERT_NOT_NULL(tensor->vals);
-    free(tensor);
+    tensor_free(tensor);
 }
 
 void test_tensor_init_multiple_dims(void) {
     tg_tensor_t* tensor = (tg_tensor_t*)NULL;
     TENSOR_CREATE(&tensor, 2, 3);
-    TEST_ASSERT_EQUAL(6, tensor->size);
+    TEST_ASSERT_EQUAL(6, tensor->n_elements);
     TEST_ASSERT_NOT_NULL(tensor->vals);
-    free(tensor);
+    tensor_free(tensor);
 }
 
 
@@ -35,7 +35,7 @@ void test_tensor_scalar_add(void) {
     TEST_ASSERT_EQUAL_DOUBLE(6.0, tensor->vals[0]);
     TEST_ASSERT_EQUAL_DOUBLE(7.0, tensor->vals[1]);
     TEST_ASSERT_EQUAL_DOUBLE(8.0, tensor->vals[2]);
-    free(tensor);
+    tensor_free(tensor);
 }
 
 void test_tensor_scalar_add_negative(void) {
@@ -48,7 +48,7 @@ void test_tensor_scalar_add_negative(void) {
 
     TEST_ASSERT_EQUAL_DOUBLE(7.0, tensor->vals[0]);
     TEST_ASSERT_EQUAL_DOUBLE(2.0, tensor->vals[1]);
-    free(tensor);
+    tensor_free(tensor);
 }
 
 void test_tensor_sqrt_all(void) {
@@ -57,13 +57,13 @@ void test_tensor_sqrt_all(void) {
     UNWRAP(tensor_scalar_add(tensor, 64.0));
     UNWRAP(tensor_sqrt(tensor));
 
-    for(size_t i = 0; i< tensor->size; i++) {
+    for(size_t i = 0; i< tensor->n_elements; i++) {
         TEST_ASSERT_EQUAL_DOUBLE(8.0, tensor->vals[i]);
     }
 
     TEST_ASSERT_EQUAL_DOUBLE(8.0, tensor->vals[0]);
     TEST_ASSERT_EQUAL_DOUBLE(8.0, tensor->vals[1]);
-    free(tensor);
+    tensor_free(tensor);
 }
 
 
@@ -82,14 +82,14 @@ void test_tensor_shape_init_creates_shape(void) {
 
     TEST_ASSERT_EQUAL(3, tensor->shape.n_dimensions);
 
-    free(tensor);
+    tensor_free(tensor);
 }
 
 void test_tensor_shape_total_elements_calculation(void) {
     tg_tensor_t* tensor = (tg_tensor_t*)NULL;
     TENSOR_CREATE(&tensor, 3, 3, 3);
     TEST_ASSERT_EQUAL(27, tensor_total_elements(tensor));
-    free(tensor);
+    tensor_free(tensor);
 }
 
 int main(void) {
