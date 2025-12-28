@@ -32,6 +32,29 @@ tg_err_t tensor_init(size_t dims[], size_t n_dims, tg_tensor_t** ptr) {
     return SUCCESS;
 }
 
+
+tg_err_t tensor_shape_init(size_t dims[], size_t n_dims, tg_tensor_shape_t* shape) {
+    assert(dims != NULL);
+    assert(n_dims > 0);
+    if (!shape) {return ERR_MEMORY_ALLOCATION; }
+
+    shape->n_dimensions = n_dims;
+
+    shape->dimensions = calloc(shape->n_dimensions, sizeof(size_t));
+    memcpy((void*)shape->dimensions, (const void*) dims, sizeof(size_t)*n_dims);
+    assert(*dims == *shape->dimensions);
+
+    shape->strides = calloc(shape->n_dimensions, sizeof(size_t));
+    for(size_t i = 0; i < shape->n_dimensions; i++) {
+        size_t stride_length = 1;
+        for (size_t j = i; j < shape->n_dimensions; j++) {
+            stride_length *= dims[j];
+        }
+        shape->strides[i] = stride_length;
+    }
+    return SUCCESS;
+}
+
 void tensor_free(tg_tensor_t* tensor) {
     assert(tensor != NULL);
     for (size_t i = 0; i < tensor->n_input_tensors; ++i) {
@@ -41,6 +64,34 @@ void tensor_free(tg_tensor_t* tensor) {
     }
     free(tensor);
 }
+
+tg_err_t tensor_create_graph(tg_tensor_t* tensor, \
+                             tg_tensor_t* a, \
+                             tg_tensor_t* b, \
+                             enum tg_backward_op op) {
+    assert(tensor != NULL);
+    assert(a != NULL);
+    assert(b != NULL);
+
+    tensor->input_tensors = calloc(2, sizeof(tg_tensor_t*));
+    tensor->n_input_tensors = 2;
+    tensor->input_tensors[0] = a;
+    tensor->input_tensors[1] = b;
+
+    switch (op) {
+        case TG_BOP_MUL:
+            tensor->backward = tensor_backward_mul;
+            break;
+
+        default:
+            TENSOR_DESTROY(tensor);
+            assert(false);
+    }
+
+    return SUCCESS;
+}
+
+
 
 
 tg_err_t tensor_scalar_add(tg_tensor_t* tensor, tg_value_t scalar) {
@@ -73,25 +124,6 @@ tg_err_t tensor_abs(tg_tensor_t* tensor) {
     }
     return SUCCESS;
 }
-
-void tensor_print(tg_tensor_t* tensor) {
-    printf("Tensor {\n\t");
-    for(size_t i = 0; i< tensor->n_elements; i++) {
-        printf("[%0.03f] ", tensor->vals[i]);
-        if (i != 0 && (i+1) % 3 == 0) { printf("\n\t");}
-    }
-    printf("\r}\n");
-}
-
-void tensor_print_grads(tg_tensor_t* tensor) {
-    printf("Tensor Gradients {\n\t");
-    for(size_t i = 0; i< tensor->n_elements; i++) {
-        printf("[%0.03f] ", tensor->grads[i]);
-        if (i != 0 && (i+1) % 3 == 0) { printf("\n\t");}
-    }
-    printf("\n}\n");
-}
-
 tg_err_t tensor_backward_mul(tg_tensor_t* tensor) {
     assert(tensor->input_tensors[0] != NULL);
     assert(tensor->input_tensors[1] != NULL);
@@ -128,55 +160,42 @@ tg_tensor_t* tensor_mul(tg_tensor_t* a, tg_tensor_t* b) {
     return tensor;
 }
 
-tg_err_t tensor_create_graph(tg_tensor_t* tensor, \
-                             tg_tensor_t* a, \
-                             tg_tensor_t* b, \
-                             enum tg_backward_op op) {
-    assert(tensor != NULL);
+float tensor_dot_product(tg_tensor_t* a, tg_tensor_t* b) {
     assert(a != NULL);
     assert(b != NULL);
+    assert(a->vals != NULL);
+    assert(b->vals != NULL);
+    assert(a->n_elements == b->n_elements);
 
-    tensor->input_tensors = calloc(2, sizeof(tg_tensor_t*));
-    tensor->n_input_tensors = 2;
-    tensor->input_tensors[0] = a;
-    tensor->input_tensors[1] = b;
-
-    switch (op) {
-        case TG_BOP_MUL:
-            tensor->backward = tensor_backward_mul;
-            break;
-
-        default:
-            TENSOR_DESTROY(tensor);
-            assert(false);
+    tg_value_t result = 0.0f;
+    for(size_t i = 0; i < a->n_elements; ++i) {
+        result += a->vals[i] * b->vals[i];
     }
-
-    return SUCCESS;
+    return result;
 }
 
 
-
-tg_err_t tensor_shape_init(size_t dims[], size_t n_dims, tg_tensor_shape_t* shape) {
-    assert(dims != NULL);
-    assert(n_dims > 0);
-    if (!shape) {return ERR_MEMORY_ALLOCATION; }
-
-    shape->n_dimensions = n_dims;
-
-    shape->dimensions = calloc(shape->n_dimensions, sizeof(size_t));
-    memcpy((void*)shape->dimensions, (const void*) dims, sizeof(size_t)*n_dims);
-    assert(*dims == *shape->dimensions);
-
-    shape->strides = calloc(shape->n_dimensions, sizeof(size_t));
-    for(size_t i = 0; i < shape->n_dimensions; i++) {
-        size_t stride_length = 1;
-        for (size_t j = i; j < shape->n_dimensions; j++) {
-            stride_length *= dims[j];
-        }
-        shape->strides[i] = stride_length;
+// ==============================
+//            Utils
+// ==============================
+void tensor_print(tg_tensor_t* tensor) {
+    printf("Tensor {\n\t");
+    for(size_t i = 0; i< tensor->n_elements; i++) {
+        printf("[%0.03f] ", tensor->vals[i]);
+        if (i != 0 && (i+1) % 3 == 0) { printf("\n\t");}
     }
-    return SUCCESS;
+    printf("\r}\n");
 }
+
+void tensor_print_grads(tg_tensor_t* tensor) {
+    printf("Tensor Gradients {\n\t");
+    for(size_t i = 0; i< tensor->n_elements; i++) {
+        printf("[%0.03f] ", tensor->grads[i]);
+        if (i != 0 && (i+1) % 3 == 0) { printf("\n\t");}
+    }
+    printf("\n}\n");
+}
+
 
 size_t tensor_total_elements(tg_tensor_t* tensor) {
     assert(tensor->shape.n_dimensions > 0);
