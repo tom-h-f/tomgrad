@@ -4,13 +4,13 @@ MODE=$1
 
 if [ "$MODE" = "scratchpad" ]; then
     echo "Building and running scratchpad..."
-    clang -std=c23 -Wall -Wextra -pedantic -Itomgrad -o build/scratchpad scratchpad/scratchpad.c tomgrad/tomgrad.c -lm -gdwarf-4
+    clang -std=c23 -Wall -Wextra -pedantic -Itomgrad -o build/scratchpad scratchpad/scratchpad.c  -lm -gdwarf-4
     if [ $? -eq 0 ]; then
         ./build/scratchpad
     fi
 elif [ "$MODE" = "test" ]; then
     echo "Building and running tests..."
-    clang -std=c23 -Wall -Wextra -pedantic -DUNITY_INCLUDE_DOUBLE -DUNITY_INCLUDE_PRINT_FORMATTED -Itests -Itomgrad -o build/tests tests/tests.c tests/unity.c tomgrad/tomgrad.c -lm -gdwarf-4
+    clang -std=c23 -Wall -Wextra -pedantic -DUNITY_INCLUDE_DOUBLE -DUNITY_INCLUDE_PRINT_FORMATTED -Itests -Itomgrad -o build/tests tests/tests.c tests/unity.c -lm -gdwarf-4
     if [ $? -eq 0 ]; then
         ./build/tests
     fi
