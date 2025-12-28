@@ -136,6 +136,8 @@ tg_err_t tensor_scalar_div(tg_tensor_t* tensor, tg_value_t scalar);
 tg_err_t tensor_sqrt(tg_tensor_t* tensor);
 tg_err_t tensor_abs(tg_tensor_t* tensor);
 
+tg_value_t tensor_dot_product(tg_tensor_t* a, tg_tensor_t* b);
+
 void tensor_print(tg_tensor_t* tensor);
 void tensor_print_grads(tg_tensor_t* tensor);
 size_t tensor_total_elements(tg_tensor_t* tensor);
