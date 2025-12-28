@@ -92,6 +92,20 @@ void test_tensor_shape_total_elements_calculation(void) {
     tensor_free(tensor);
 }
 
+
+void test_tensor_dot_product_simple_calculation(void) {
+    tg_tensor_t* a = (tg_tensor_t*)NULL;
+    tg_tensor_t* b = (tg_tensor_t*)NULL;
+    TENSOR_CREATE_RANDOM(&a, 2.0, 2);
+    TENSOR_CREATE_FILLED(&b, 2.0, 2);
+
+    tg_value_t result = tensor_dot_product(a, b);
+    TEST_ASSERT_EQUAL(result, 8.0);
+
+    tensor_free(a);
+    tensor_free(b);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_tensor_init_creates_tensor);
@@ -101,6 +115,7 @@ int main(void) {
     RUN_TEST(test_tensor_sqrt_all);
     RUN_TEST(test_tensor_shape_init_creates_shape);
     RUN_TEST(test_tensor_shape_total_elements_calculation);
+    RUN_TEST(test_tensor_dot_product_simple_calculation);
     
     return UNITY_END();
 }
