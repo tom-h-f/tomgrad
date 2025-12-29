@@ -8,12 +8,12 @@ Working on basic tensor operations and computational graph setup. Got element-wi
 
 ## TODO
 
+### Misc
+- Should the backprop function be per-value or per-tensor?
+
 ### High Priority
 
 **Autograd Operations**
-- Add element-wise addition backward pass
-- Add element-wise subtraction backward pass
-- Add element-wise division backward pass
 - Add matrix multiplication backward pass
 - Add sum reduction operation with backward pass
 - Add mean reduction operation with backward pass
