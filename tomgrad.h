@@ -21,6 +21,8 @@
 #define ERR_MEMORY_ALLOCATION 2
 #define ERR_INVALID_BACKWARDS_OP 3
 
+#define TODO() assert(false && "TODO") 
+#define UNREACHABLE() assert(false && "UNREACHABLE") 
 #define UNWRAP(expr) do { \
 		tg_err_t err = (expr); \
 		if (err != SUCCESS) { \
@@ -52,10 +54,17 @@ struct tg_tensor_t {
 
     tg_tensor_t** input_tensors;
     size_t n_input_tensors;
+    size_t ref_count;
 };
 
 enum tg_backward_op {
-    TG_BOP_MUL,
+    TG_BOP_EL_ADD,
+    TG_BOP_EL_SUB,
+    TG_BOP_EL_MUL,
+    TG_BOP_EL_DIV,
+    TG_BOP_MAT_MUL,
+    TG_BOP_SUM_REDUCTION,
+    TG_BOP_MEAN_REDUCTION,
 };
 
 
@@ -132,12 +141,20 @@ enum tg_backward_op {
 				} \
 		} while (0)
 
+#define TENSOR_GRADS_SET(t, v) \
+		do { \
+				for (size_t i = 0; i < t->n_elements; i++) { \
+                     t->grads[i] = v; \
+				} \
+		} while (0)
+
 
 #define TENSOR_PRINT(tensor) tensor_print(tensor)
 #define TENSOR_PRINT_GRADIENTS(tensor) tensor_print_grads(tensor)
 
 tg_err_t tensor_init(size_t dims[], size_t n_dims, tg_tensor_t** ptr);
 void tensor_free(tg_tensor_t* tensor);
+void tensor_free_recursive(tg_tensor_t* tensor);
 
 tg_err_t tensor_scalar_add(tg_tensor_t* tensor, tg_value_t scalar);
 tg_err_t tensor_scalar_sub(tg_tensor_t* tensor, tg_value_t scalar);
@@ -158,9 +175,18 @@ tg_err_t tensor_create_graph(tg_tensor_t* tensor, \
                              enum tg_backward_op op);
 
 
-tg_tensor_t* tensor_mul(tg_tensor_t* a, tg_tensor_t* b);
-tg_err_t tensor_backward_mul(tg_tensor_t* tensor);
-tg_err_t  tensor_backward_sum(tg_tensor_t* tensor);
+tg_tensor_t* tensor_el_add(tg_tensor_t* a, tg_tensor_t* b);
+tg_tensor_t* tensor_el_sub(tg_tensor_t* a, tg_tensor_t* b);
+tg_tensor_t* tensor_el_mul(tg_tensor_t* a, tg_tensor_t* b);
+tg_tensor_t* tensor_el_div(tg_tensor_t* a, tg_tensor_t* b);
+tg_err_t tensor_backward_el_add(tg_tensor_t* tensor);
+tg_err_t tensor_backward_el_sub(tg_tensor_t* tensor);
+tg_err_t tensor_backward_el_mul(tg_tensor_t* tensor);
+tg_err_t tensor_backward_el_div(tg_tensor_t* tensor);
+
+/*
+* tg_err_t tensor_backward_mat_mul(tg_tensor_t* tensor);
+*/
 
 
 tg_err_t tensor_shape_init(size_t dims[], size_t n_dims, tg_tensor_shape_t* shape);
@@ -175,27 +201,24 @@ size_t total_elements_for_dimensions(size_t dims[], size_t n_dims);
 // =======================================================
 
 
+
 tg_err_t tensor_init(size_t dims[], size_t n_dims, tg_tensor_t** ptr) {
     assert(dims != NULL);
     assert(n_dims > 0);
 
     size_t tensor_size = total_elements_for_dimensions(dims, n_dims) * sizeof(tg_value_t);
-
     size_t total_size = (2 * tensor_size) + sizeof(tg_tensor_t);
 
     tg_tensor_t* tensor = calloc(1, total_size);
     if (!tensor) {return ERR_MEMORY_ALLOCATION; }
     tensor_shape_init(dims, n_dims, &tensor->shape);
 
+    tensor->ref_count = 1;
     tensor->n_elements = tensor_total_elements(tensor);
 
     tensor->vals = (tg_value_t*)(tensor+1);
-    tensor->grads = tensor->vals + tensor->n_elements;
+    tensor->grads = (tg_value_t*)(tensor->vals + tensor->n_elements);
 
-
-    for(size_t i = 0; i< tensor->n_elements; i++) {
-        tensor->grads[i] = 1.0;
-    }
     *ptr = tensor;
     return SUCCESS;
 }
@@ -220,43 +243,33 @@ tg_err_t tensor_shape_init(size_t dims[], size_t n_dims, tg_tensor_shape_t* shap
         }
         shape->strides[i] = stride_length;
     }
-    tensor_shape_print(shape);
     return SUCCESS;
 }
 
 void tensor_free(tg_tensor_t* tensor) {
     assert(tensor != NULL);
-    // Free the pointer array to input(parent/children) tensors
-    // Those tensors have to free themselves, this is just freeing 
-    // the lookup table
     free(tensor->input_tensors);
     free(tensor);
 }
 
-tg_err_t tensor_create_graph(tg_tensor_t* tensor, \
-                             tg_tensor_t* a, \
-                             tg_tensor_t* b, \
-                             enum tg_backward_op op) {
+void tensor_free_recursive(tg_tensor_t* tensor) {
     assert(tensor != NULL);
-    assert(a != NULL);
-    assert(b != NULL);
 
-    tensor->input_tensors = calloc(2, sizeof(tg_tensor_t*));
-    tensor->n_input_tensors = 2;
-    tensor->input_tensors[0] = a;
-    tensor->input_tensors[1] = b;
-
-    switch (op) {
-        case TG_BOP_MUL:
-            tensor->backward = tensor_backward_mul;
-            break;
-
-        default:
-            TENSOR_DESTROY(tensor);
-            assert(false);
+    if(tensor->ref_count > 1) {
+        tensor->ref_count -= 1;
+        return;
     }
 
-    return SUCCESS;
+    for(size_t i = 0; i < tensor->n_input_tensors; ++i) {
+        tensor_free_recursive(tensor->input_tensors[i]);
+    }
+    free(tensor->input_tensors);
+    free(tensor);
+}
+
+tg_err_t tensor_backward_pass(tg_tensor_t* tensor) {
+    TENSOR_GRADS_SET(tensor, 1.0);
+    return tensor->backward(tensor);
 }
 
 
@@ -292,12 +305,126 @@ tg_err_t tensor_abs(tg_tensor_t* tensor) {
     }
     return SUCCESS;
 }
-tg_err_t tensor_backward_mul(tg_tensor_t* tensor) {
+
+tg_err_t tensor_create_graph(tg_tensor_t* tensor, \
+                              tg_tensor_t* a, \
+                              tg_tensor_t* b, \
+                              enum tg_backward_op op) {
+    assert(tensor != NULL);
+    assert(a != NULL);
+    assert(b != NULL);
+
+    // During backward pass:
+    //   - Calling backward(C) computes dL/dA and dL/dB
+    //   - Then recursively calls backward(A) and backward(B)
+    //
+    // This allows the loss gradient to flow backward through the entire graph:
+    //   Loss -> ... -> C -> A, B -> ... -> parameters
+    //
+    tensor->n_input_tensors = 2;
+    tensor->input_tensors = calloc(tensor->n_input_tensors, \
+                                   sizeof(tg_tensor_t*));
+    tensor->input_tensors[0] = a;
+    tensor->input_tensors[1] = b;
+
+    a->ref_count += 1;
+    b->ref_count += 1;
+
+    switch (op) {
+        case TG_BOP_EL_ADD:
+            // Addition:
+            // d(A+B)/dA = 1,  d(A+B)/dB = 1
+            tensor->backward = tensor_backward_el_add;
+            break;
+        case TG_BOP_EL_SUB:
+            // Subtraction:
+            // d(A-B)/dA = 1,  d(A-B)/dB = -1
+            tensor->backward = tensor_backward_el_sub;
+            break;
+        case TG_BOP_EL_MUL:
+            // Multiplication:
+            // d(A*B)/dA = B,  d(A*B)/dB = A
+            tensor->backward = tensor_backward_el_mul;
+            break;
+        case TG_BOP_EL_DIV:
+            // Division:
+            // d(A/B)/dA = 1/B, d(A/B)/dB = -A/B²
+            tensor->backward = tensor_backward_el_div;
+            break;
+        case TG_BOP_MAT_MUL:
+        case TG_BOP_MEAN_REDUCTION:
+        case TG_BOP_SUM_REDUCTION:
+            TODO();
+        default:
+            TENSOR_DESTROY(tensor);
+            UNREACHABLE();
+    }
+
+    return SUCCESS;
+}
+
+tg_err_t  tensor_backward_el_add(tg_tensor_t* tensor) {
+    if(tensor->n_input_tensors == 0) {
+        return SUCCESS;
+    }
+
+    assert(tensor->n_input_tensors == 2);
     assert(tensor->input_tensors[0] != NULL);
     assert(tensor->input_tensors[1] != NULL);
+    assert(tensor->input_tensors[0]->shape.n_dimensions\
+           == tensor->input_tensors[1]->shape.n_dimensions);
+
+    tg_tensor_t* A = tensor->input_tensors[0];
+    tg_tensor_t* B = tensor->input_tensors[1];
+
+    for (size_t i = 0; i < tensor->n_elements; i++) {
+         A->grads[i] += tensor->grads[i];
+         B->grads[i] += tensor->grads[i];
+    }
+    
+    if(A->backward) A->backward(A);
+    if(B->backward) B->backward(B);
+
+
+    return SUCCESS;
+}
+
+tg_err_t tensor_backward_el_sub(tg_tensor_t* tensor) {
+    if(tensor->n_input_tensors == 0) {
+        return SUCCESS;
+    }
     assert(tensor->n_input_tensors == 2);
+    assert(tensor->input_tensors[0] != NULL);
+    assert(tensor->input_tensors[1] != NULL);
+    assert(tensor->input_tensors[0]->shape.n_dimensions\
+           == tensor->input_tensors[1]->shape.n_dimensions);
+
+    tg_tensor_t* A = tensor->input_tensors[0];
+    tg_tensor_t* B = tensor->input_tensors[1];
+
+    for (size_t i = 0; i < tensor->n_elements; i++) {
+         A->grads[i] += tensor->grads[i];
+         B->grads[i] -= tensor->grads[i];
+    }
+    
+    if(A->backward) A->backward(A);
+    if(B->backward) B->backward(B);
+
+    return SUCCESS;
+}
+
+tg_err_t tensor_backward_el_mul(tg_tensor_t* tensor) {
     assert(tensor->grads != NULL);
-    assert(tensor->input_tensors[0]->shape.n_dimensions == tensor->input_tensors[1]->shape.n_dimensions);
+
+    if(tensor->n_input_tensors == 0) {
+        return SUCCESS;
+    }
+
+    assert(tensor->n_input_tensors == 2);
+    assert(tensor->input_tensors[0] != NULL);
+    assert(tensor->input_tensors[1] != NULL);
+    assert(tensor->input_tensors[0]->shape.n_dimensions \
+           == tensor->input_tensors[1]->shape.n_dimensions);
 
     tg_tensor_t* A = tensor->input_tensors[0];
     tg_tensor_t* B = tensor->input_tensors[1];
@@ -306,25 +433,85 @@ tg_err_t tensor_backward_mul(tg_tensor_t* tensor) {
         A->grads[i] += tensor->grads[i] * B->vals[i];
         B->grads[i] += tensor->grads[i] * A->vals[i];
     }
+    
+    if(A->backward) A->backward(A);
+    if(B->backward) B->backward(B);
 
     return SUCCESS;
 }
 
-tg_err_t  tensor_backward_sum(tg_tensor_t* tensor) {
+tg_err_t tensor_backward_el_div(tg_tensor_t* tensor) {
+    assert(tensor->grads != NULL);
+
+    if(tensor->n_input_tensors == 0) {
+        return SUCCESS;
+    }
+
+    assert(tensor->n_input_tensors == 2);
     assert(tensor->input_tensors[0] != NULL);
     assert(tensor->input_tensors[1] != NULL);
+    assert(tensor->input_tensors[0]->shape.n_dimensions \
+           == tensor->input_tensors[1]->shape.n_dimensions);
+
+    tg_tensor_t* A = tensor->input_tensors[0];
+    tg_tensor_t* B = tensor->input_tensors[1];
+
+    for (size_t i = 0; i < tensor->n_elements; i++) {
+        A->grads[i] += tensor->grads[i] * (1/B->vals[i]);
+        B->grads[i] += tensor->grads[i] * ((-1 * A->vals[i]) / (B->vals[i] * B->vals[i]));
+    }
+    
+    if(A->backward) A->backward(A);
+    if(B->backward) B->backward(B);
+
     return SUCCESS;
 }
 
-tg_tensor_t* tensor_mul(tg_tensor_t* a, tg_tensor_t* b) {
+tg_tensor_t* tensor_el_add(tg_tensor_t* a, tg_tensor_t* b) {
     tg_tensor_t* tensor = NULL;
-    tensor_init(a->shape.dimensions, a->shape.n_dimensions, &tensor);
+    UNWRAP(tensor_init(a->shape.dimensions, a->shape.n_dimensions, &tensor));
+
+    for(size_t i = 0; i< tensor->n_elements; i++) {
+        tensor->vals[i] = a->vals[i] + b->vals[i];
+    }
+
+    tensor_create_graph(tensor, a, b, TG_BOP_EL_ADD);
+    return tensor;
+}
+
+tg_tensor_t* tensor_el_sub(tg_tensor_t* a, tg_tensor_t* b) {
+    tg_tensor_t* tensor = NULL;
+    UNWRAP(tensor_init(a->shape.dimensions, a->shape.n_dimensions, &tensor));
+
+    for(size_t i = 0; i< tensor->n_elements; i++) {
+        tensor->vals[i] = a->vals[i] - b->vals[i];
+    }
+
+    tensor_create_graph(tensor, a, b, TG_BOP_EL_SUB);
+    return tensor;
+}
+
+tg_tensor_t* tensor_el_mul(tg_tensor_t* a, tg_tensor_t* b) {
+    tg_tensor_t* tensor = NULL;
+    UNWRAP(tensor_init(a->shape.dimensions, a->shape.n_dimensions, &tensor));
 
     for(size_t i = 0; i< tensor->n_elements; i++) {
         tensor->vals[i] = a->vals[i] * b->vals[i];
     }
 
-    tensor_create_graph(tensor, a, b, TG_BOP_MUL);
+    tensor_create_graph(tensor, a, b, TG_BOP_EL_MUL);
+    return tensor;
+}
+
+tg_tensor_t* tensor_el_div(tg_tensor_t* a, tg_tensor_t* b) {
+    tg_tensor_t* tensor = NULL;
+    UNWRAP(tensor_init(a->shape.dimensions, a->shape.n_dimensions, &tensor));
+
+    for(size_t i = 0; i< tensor->n_elements; i++) {
+        tensor->vals[i] = a->vals[i] / b->vals[i];
+    }
+
+    tensor_create_graph(tensor, a, b, TG_BOP_EL_DIV);
     return tensor;
 }
 
@@ -341,6 +528,13 @@ float tensor_dot_product(tg_tensor_t* a, tg_tensor_t* b) {
     }
     return result;
 }
+
+
+
+
+
+
+
 
 
 // ==============================
