@@ -320,7 +320,6 @@ tg_err_t tensor_create_graph(tg_tensor_t* tensor, \
     //
     // This allows the loss gradient to flow backward through the entire graph:
     //   Loss -> ... -> C -> A, B -> ... -> parameters
-    //
     tensor->n_input_tensors = 2;
     tensor->input_tensors = calloc(tensor->n_input_tensors, \
                                    sizeof(tg_tensor_t*));
